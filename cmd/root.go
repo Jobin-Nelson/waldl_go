@@ -10,9 +10,14 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
+	"sync"
+	"time"
 
 	"github.com/spf13/cobra"
 )
+
+var downloadDir string
 
 type WallResponse struct {
 	Data []struct {
@@ -48,12 +53,34 @@ func init() {
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.
 	// rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
-	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		log.Fatalln("Error occured, could not get home directory", err)
+	}
+	wallDir := filepath.Join(home, "Pictures", "wallpapers")
+	if _, err := os.Stat(wallDir); os.IsNotExist(err) {
+		log.Fatalln(wallDir, "does not exist")
+	}
+	rootCmd.PersistentFlags().StringVarP(
+		&downloadDir,
+		"dir",
+		"d",
+		filepath.Join(wallDir, time.Now().Format(time.DateOnly)),
+		"directory to download wallpapers",
+	)
 }
 
 func rootRun(cmd *cobra.Command, args []string) {
+	fmt.Println("Downloading to", downloadDir)
 	wallLinks := getWallLinks(args)
-	fmt.Println(wallLinks)
+	wg := &sync.WaitGroup{}
+
+	for _, link := range wallLinks {
+		wg.Add(1)
+		go downloadWall(link, wg)
+	}
+	wg.Wait()
+	fmt.Println("Wallpapers downloaded to", downloadDir)
 }
 
 func getWallLinks(args []string) []string {
@@ -77,6 +104,7 @@ func getWallLinks(args []string) []string {
 	if err != nil {
 		log.Fatalln("Error occured when requesting", req.URL.String(), err)
 	}
+	defer res.Body.Close()
 	if res.StatusCode != 200 {
 		log.Fatalln("Error occured, recieved response code", res.StatusCode)
 	}
@@ -95,4 +123,33 @@ func getWallLinks(args []string) []string {
 		wallLinks = append(wallLinks, v.Path)
 	}
 	return wallLinks
+}
+
+func downloadWall(link string, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	// Fetching wallpaper
+	res, err := http.Get(link)
+	if err != nil {
+		fmt.Println("Not able to download", link)
+		return
+	}
+	defer res.Body.Close()
+
+	// Creating file
+	downloadFile := filepath.Join(downloadDir, filepath.Base(link))
+	f, err := os.OpenFile(downloadFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		fmt.Println("Not able to create file", downloadFile)
+		return
+	}
+	defer f.Close()
+
+	// Copying wallpaper to file
+	if _, err := io.Copy(f, res.Body); err != nil {
+		fmt.Println("Not able to write to file", downloadFile)
+		return
+	}
+
+	fmt.Println("Downloaded", downloadFile)
 }
