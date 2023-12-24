@@ -17,7 +17,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var downloadDir string
+var (
+	downloadDir string
+	numWall     int
+)
 
 type WallResponse struct {
 	Data []struct {
@@ -68,18 +71,30 @@ func init() {
 		filepath.Join(wallDir, time.Now().Format(time.DateOnly)),
 		"directory to download wallpapers",
 	)
+	rootCmd.PersistentFlags().IntVarP(
+		&numWall,
+		"number",
+		"n",
+		0,
+		"Number of wallpapers to download",
+	)
 }
 
 func rootRun(cmd *cobra.Command, args []string) {
 	fmt.Println("Downloading to", downloadDir)
+	c := http.DefaultClient
 	wallLinks := getWallLinks(args)
-	wg := &sync.WaitGroup{}
+	if numWall == 0 {
+		numWall = len(wallLinks)
+	}
 
-	for _, link := range wallLinks {
+	wg := &sync.WaitGroup{}
+	for i:=0; i<numWall; i++ {
 		wg.Add(1)
-		go downloadWall(link, wg)
+		go downloadWall(c, wallLinks[i], wg)
 	}
 	wg.Wait()
+
 	fmt.Println("Wallpapers downloaded to", downloadDir)
 }
 
@@ -125,11 +140,11 @@ func getWallLinks(args []string) []string {
 	return wallLinks
 }
 
-func downloadWall(link string, wg *sync.WaitGroup) {
+func downloadWall(client *http.Client, link string, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	// Fetching wallpaper
-	res, err := http.Get(link)
+	res, err := client.Get(link)
 	if err != nil {
 		fmt.Println("Not able to download", link)
 		return
