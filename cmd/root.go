@@ -4,7 +4,9 @@ Copyright © 2023 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -12,13 +14,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
+type WallResponse struct {
+	Data []struct {
+		Path string `json:"path"`
+	}
+}
+
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "waldl_go",
 	Short: "Wallpaper Downloader",
-	Long: "Downloads wallpaper from wallhaven.cc/",
-	Args: cobra.MaximumNArgs(1),
-	Run: rootRun,
+	Long:  "Downloads wallpaper from wallhaven.cc/",
+	Args:  cobra.MaximumNArgs(1),
+	Run:   rootRun,
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -44,8 +52,13 @@ func init() {
 }
 
 func rootRun(cmd *cobra.Command, args []string) {
+	wallLinks := getWallLinks(args)
+	fmt.Println(wallLinks)
+}
+
+func getWallLinks(args []string) []string {
 	wallUrl := "https://wallhaven.cc/api/v1/search"
-	req, err := http.NewRequest("Get", wallUrl, nil)
+	req, err := http.NewRequest(http.MethodGet, wallUrl, nil)
 	if err != nil {
 		log.Fatalln("Error occured when creating request", err)
 	}
@@ -59,4 +72,27 @@ func rootRun(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Println("Fetching first page of urls", req.URL.String())
+
+	res, err := http.Get(req.URL.String())
+	if err != nil {
+		log.Fatalln("Error occured when requesting", req.URL.String(), err)
+	}
+	if res.StatusCode != 200 {
+		log.Fatalln("Error occured, recieved response code", res.StatusCode)
+	}
+
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		log.Fatalln("Error occured when reading response body", err)
+	}
+	var wallRes WallResponse
+	if err := json.Unmarshal(body, &wallRes); err != nil {
+		log.Fatalln("Error occured when marshalling response body to json", err)
+	}
+
+	wallLinks := make([]string, 0, len(wallRes.Data))
+	for _, v := range wallRes.Data {
+		wallLinks = append(wallLinks, v.Path)
+	}
+	return wallLinks
 }
