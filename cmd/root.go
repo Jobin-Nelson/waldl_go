@@ -83,13 +83,13 @@ func init() {
 func rootRun(cmd *cobra.Command, args []string) {
 	fmt.Println("Downloading to", downloadDir)
 	c := http.DefaultClient
-	wallLinks := getWallLinks(args)
+	wallLinks := getWallLinks(c, args)
 	if numWall == 0 {
 		numWall = len(wallLinks)
 	}
 
 	wg := &sync.WaitGroup{}
-	for i:=0; i<numWall; i++ {
+	for i := 0; i < numWall; i++ {
 		wg.Add(1)
 		go downloadWall(c, wallLinks[i], wg)
 	}
@@ -98,7 +98,7 @@ func rootRun(cmd *cobra.Command, args []string) {
 	fmt.Println("Wallpapers downloaded to", downloadDir)
 }
 
-func getWallLinks(args []string) []string {
+func getWallLinks(c *http.Client, args []string) []string {
 	wallUrl := "https://wallhaven.cc/api/v1/search"
 	req, err := http.NewRequest(http.MethodGet, wallUrl, nil)
 	if err != nil {
@@ -115,7 +115,7 @@ func getWallLinks(args []string) []string {
 
 	fmt.Println("Fetching first page of urls", req.URL.String())
 
-	res, err := http.Get(req.URL.String())
+	res, err := c.Do(req)
 	if err != nil {
 		log.Fatalln("Error occured when requesting", req.URL.String(), err)
 	}
@@ -140,19 +140,19 @@ func getWallLinks(args []string) []string {
 	return wallLinks
 }
 
-func downloadWall(client *http.Client, link string, wg *sync.WaitGroup) {
+func downloadWall(c *http.Client, l string, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	// Fetching wallpaper
-	res, err := client.Get(link)
+	res, err := c.Get(l)
 	if err != nil {
-		fmt.Println("Not able to download", link)
+		fmt.Println("Not able to download", l)
 		return
 	}
 	defer res.Body.Close()
 
 	// Creating file
-	downloadFile := filepath.Join(downloadDir, filepath.Base(link))
+	downloadFile := filepath.Join(downloadDir, filepath.Base(l))
 	f, err := os.OpenFile(downloadFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		fmt.Println("Not able to create file", downloadFile)
