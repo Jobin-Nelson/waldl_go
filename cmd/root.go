@@ -84,6 +84,9 @@ func rootRun(cmd *cobra.Command, args []string) {
 	fmt.Println("Downloading to", downloadDir)
 	c := http.DefaultClient
 	wallLinks := getWallLinks(c, args)
+	if err := os.MkdirAll(downloadDir, 0755); err != nil {
+		log.Fatalln("Error occured when creating directory", downloadDir)
+	}
 	if numWall == 0 {
 		numWall = len(wallLinks)
 	}
